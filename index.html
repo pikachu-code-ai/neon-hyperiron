@@ -117,8 +117,6 @@
     #gameCanvas {
       position: fixed;
       inset: 0;
-      width: 100%;
-      height: 100%;
       z-index: 0;
       display: block;
     }
@@ -1062,8 +1060,11 @@
       const canvas = document.getElementById('gameCanvas');
       const ctx = canvas.getContext('2d', { alpha: false });
 
-      let viewW = window.innerWidth;
-      let viewH = window.innerHeight;
+      let dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+      let W = window.innerWidth;
+      let H = window.innerHeight;
+      let viewW = W;
+      let viewH = H;
 
       let gameState = 'MENU';
       let lastStartMs = 0;
@@ -1183,20 +1184,27 @@
       }
 
       function resizeCanvas() {
-        const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-        viewW = window.innerWidth;
-        viewH = window.innerHeight;
-        canvas.width = Math.floor(viewW * dpr);
-        canvas.height = Math.floor(viewH * dpr);
+        dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+        W = window.innerWidth;
+        H = window.innerHeight;
+        viewW = W;
+        viewH = H;
+
+        canvas.width = Math.floor(W * dpr);
+        canvas.height = Math.floor(H * dpr);
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         buildStarfield();
         if (player.x === 0 && player.y === 0) {
-          player.x = viewW * 0.5;
-          player.y = viewH * 0.78;
+          player.x = W * 0.5;
+          player.y = H * 0.78;
         }
         clampPlayerPosition();
       }
       window.addEventListener('resize', resizeCanvas);
+      window.addEventListener('orientationchange', resizeCanvas);
 
       function spawnParticles(x, y, color, count, speedMult) {
         const mult = speedMult || 1;
@@ -2634,10 +2642,7 @@
       }
 
       function drawPerspectiveBackdrop() {
-        ctx.fillStyle = '#05050a';
-        ctx.fillRect(0, 0, viewW, viewH);
-
-        const vanishX = viewW * 0.5;
+        const vanishX = W * 0.5;
         const gridColor =
           hyperTimer > 0
             ? 'rgba(255, 230, 0, ' + (0.12 + beatPulse * 0.08).toFixed(3) + ')'
@@ -2650,24 +2655,24 @@
         ctx.beginPath();
 
         const cols = 14;
-        const colStep = viewW / 9;
+        const colStep = W / 9;
         for (let c = -cols; c <= cols; c++) {
           ctx.moveTo(vanishX + c * 18, 0);
-          ctx.lineTo(vanishX + c * colStep, viewH);
+          ctx.lineTo(vanishX + c * colStep, H);
         }
 
         const step = 64;
-        for (let y = gridScroll - step; y < viewH; y += step) {
+        for (let y = gridScroll - step; y < H; y += step) {
           ctx.moveTo(0, y);
-          ctx.lineTo(viewW, y);
+          ctx.lineTo(W, y);
         }
         ctx.stroke();
 
         if (beatPulse > 0.05) {
           ctx.fillStyle = hyperTimer > 0 ? '#ffe600' : '#00f3ff';
           ctx.globalAlpha = beatPulse * 0.35;
-          for (let y = gridScroll; y < viewH; y += step * 2) {
-            for (let x = viewW * 0.15; x <= viewW * 0.85; x += viewW * 0.175) {
+          for (let y = gridScroll; y < H; y += step * 2) {
+            for (let x = W * 0.15; x <= W * 0.85; x += W * 0.175) {
               ctx.fillRect(x - 2, y - 2, 4, 4);
             }
           }
@@ -3209,11 +3214,29 @@
 
       function render(nowMs) {
         const nowSec = nowMs * 0.001;
+        const currentDpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+
+        // Keep backing buffer and CSS viewport dimensions strictly synchronized
+        if (window.innerWidth !== W || window.innerHeight !== H || currentDpr !== dpr) {
+          resizeCanvas();
+        }
+
+        // Clear 100% of physical backing-buffer pixels every frame (zero ghost trails)
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#05050a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Apply logical DPR transform for full-viewport rendering
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.save();
 
         if (shakeTime > 0) {
           const mag = (shakeTime / 0.55) * shakeMag;
-          ctx.translate((Math.random() - 0.5) * mag * 2, (Math.random() - 0.5) * mag * 2);
+          const shakeX = (Math.random() - 0.5) * mag * 2;
+          const shakeY = (Math.random() - 0.5) * mag * 2;
+          ctx.translate(shakeX, shakeY);
         }
 
         drawPerspectiveBackdrop();
@@ -3226,7 +3249,7 @@
         if (flashAlpha > 0) {
           ctx.fillStyle = flashColor;
           ctx.globalAlpha = flashAlpha;
-          ctx.fillRect(0, 0, viewW, viewH);
+          ctx.fillRect(-32, -32, W + 64, H + 64);
           ctx.globalAlpha = 1;
         }
 
